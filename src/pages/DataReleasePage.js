@@ -17,17 +17,45 @@ const DataReleasePage = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/data/pulsars.json')
+    setIsLoading(true);
+    // Determine which file to load based on the selected phase
+    const file =
+      selectedObsPhase === 'MSPSRPI'
+        ? '/data/mspsrpi.json'
+        : '/data/pulsars.json';
+
+    fetch(file)
       .then((response) => response.json())
       .then((data) => {
-        setPulsars(data);
+        // Transform the data if needed to match the expected format
+        const formattedData = selectedObsPhase === 'MSPSRPI' 
+          ? data.pulsars.map((pulsar, index) => ({
+              id: index.toString(),
+              name: pulsar.name || pulsar.display_name,
+              display_name: pulsar.display_name,
+              phase: 'MSPSRPI',
+              status: 'Complete',
+              parallax: pulsar.distance?.value ? (1 / parseFloat(pulsar.distance.value.replace(/[^\d.-]/g, ''))) : null,
+              properMotionRA: pulsar.binary_properties?.orbital_period || "N/A",
+              properMotionDec: pulsar.period || "N/A",
+              coordinates: {
+                ra: pulsar.recommended_visualizations?.[0] || 'N/A',
+                dec: pulsar.recommended_visualizations?.[1] || 'N/A'
+              },
+              description: pulsar.description,
+              // Store the original pulsar data for full display
+              originalData: pulsar
+            }))
+          : data;
+        
+        setPulsars(formattedData);
         setIsLoading(false);
       })
       .catch((error) => {
         console.error('Error loading pulsar data:', error);
         setIsLoading(false);
       });
-  }, []);
+  }, [selectedObsPhase]);
 
   const filteredPulsars = useMemo(() => {
     return pulsars.filter((pulsar) => {
@@ -41,6 +69,29 @@ const DataReleasePage = () => {
       return matchesSearch && matchesParallax && matchesPhase && matchesStatus;
     });
   }, [pulsars, searchQuery, selectedParallaxRange, selectedObsPhase, selectedObsStatus]);
+
+  // Helper function to render pulsar property
+  const renderPulsarProperty = (label, value) => {
+    if (value === undefined || value === null) return null;
+    return (
+      <div>
+        <h4 className="text-indigo-300 font-medium mb-1">{label}</h4>
+        <p className="text-white">{value}</p>
+      </div>
+    );
+  };
+
+  // Helper function to render array as list
+  const renderList = (items) => {
+    if (!items || !items.length) return null;
+    return (
+      <ul className="list-disc pl-5 text-white">
+        {items.map((item, index) => (
+          <li key={index}>{item}</li>
+        ))}
+      </ul>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-950 via-slate-900 to-black text-gray-100">
@@ -133,8 +184,8 @@ const DataReleasePage = () => {
 
         {/* Pulsar Popup Modal */}
         {activePulsar && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-slate-900 border border-indigo-500/30 rounded-lg p-6 shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-900 border border-indigo-500/30 rounded-lg p-6 shadow-xl max-w-4xl w-full max-h-[80vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-2xl font-bold text-white">{activePulsar.name}</h3>
                 <button 
@@ -145,175 +196,198 @@ const DataReleasePage = () => {
                 </button>
               </div>
               
-              <div className="space-y-4">
-                {/* Display formatted pulsar data here */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="text-indigo-300 font-medium mb-1">Phase</h4>
-                    <p className="text-white">{activePulsar.phase}</p>
+              {selectedObsPhase === 'MSPSRPI' && activePulsar.originalData ? (
+                // Display MSPSRPi JSON data
+                <div className="space-y-4">
+                  {/* Type and Discovery */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {renderPulsarProperty("Type", activePulsar.originalData.type)}
+                    {activePulsar.originalData.discovery_year && (
+                      <div>
+                        <h4 className="text-indigo-300 font-medium mb-1">Discovery</h4>
+                        <p className="text-white">
+                          Discovered in {activePulsar.originalData.discovery_year}
+                          {activePulsar.originalData.discovered_by && ` by ${activePulsar.originalData.discovered_by}`}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <h4 className="text-indigo-300 font-medium mb-1">Status</h4>
-                    <p className="text-white">{activePulsar.status}</p>
+                  
+                  {/* Description */}
+                  {activePulsar.originalData.description && (
+                    <div>
+                      <h4 className="text-indigo-300 font-medium mb-1">Description</h4>
+                      <p className="text-gray-300">{activePulsar.originalData.description}</p>
+                    </div>
+                  )}
+                  
+                  {/* Key Facts */}
+                  {activePulsar.originalData.key_facts && (
+                    <div>
+                      <h4 className="text-indigo-300 font-medium mb-1">Key Facts</h4>
+                      {renderList(activePulsar.originalData.key_facts)}
+                    </div>
+                  )}
+                  
+                  {/* Period & Distance */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {renderPulsarProperty("Period", activePulsar.originalData.period)}
+                    {activePulsar.originalData.distance && renderPulsarProperty(
+                      "Distance", 
+                      `${activePulsar.originalData.distance.value} ${activePulsar.originalData.distance.uncertainty ? `± ${activePulsar.originalData.distance.uncertainty}` : ''}`
+                    )}
                   </div>
-                  <div>
-                    <h4 className="text-indigo-300 font-medium mb-1">Parallax</h4>
-                    <p className="text-white">{activePulsar.parallax} mas</p>
-                  </div>
-                  <div>
-                    <h4 className="text-indigo-300 font-medium mb-1">Proper Motion</h4>
-                    <p className="text-white">
-                      {activePulsar.properMotionRA && `RA: ${activePulsar.properMotionRA} mas/yr`}
-                      {activePulsar.properMotionDec && <><br />Dec: {activePulsar.properMotionDec} mas/yr</>}
-                    </p>
+                  
+                  {/* Binary Properties */}
+                  {activePulsar.originalData.binary_properties && (
+                    <div>
+                      <h4 className="text-indigo-300 font-medium mb-1">Binary Properties</h4>
+                      <div className="bg-slate-800/60 p-3 rounded">
+                        {Object.entries(activePulsar.originalData.binary_properties).map(([key, value]) => (
+                          <div key={key} className="mb-2">
+                            <span className="text-cyan-300">{key.replace(/_/g, ' ')}:</span> <span className="text-white">{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+				  {/* Astrometry Properties */}
+{activePulsar.originalData.astrometry && (
+  <div>
+    <h4 className="text-indigo-300 font-medium mb-1">Astrometry</h4>
+    <div className="bg-slate-800/60 p-3 rounded">
+      {Object.entries(activePulsar.originalData.astrometry).map(([key, value]) => (
+        <div key={key} className="mb-2">
+          <span className="text-cyan-300">{key.replace(/_/g, ' ')}:</span> <span className="text-white">{value}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+                  
+                  {/* Emission Properties */}
+                  {activePulsar.originalData.emission_properties && (
+                    <div>
+                      <h4 className="text-indigo-300 font-medium mb-1">Emission Properties</h4>
+                      <div className="bg-slate-800/60 p-3 rounded">
+                        {Object.entries(activePulsar.originalData.emission_properties).map(([key, value]) => (
+                          <div key={key} className="mb-2">
+                            <span className="text-cyan-300">{key.replace(/_/g, ' ')}:</span> <span className="text-white">{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Recommended Visualizations */}
+                  {activePulsar.originalData.recommended_visualizations && (
+                    <div>
+                      <h4 className="text-indigo-300 font-medium mb-1">Recommended Visualizations</h4>
+                      {renderList(activePulsar.originalData.recommended_visualizations)}
+                    </div>
+                  )}
+                  
+                  {/* References */}
+                  {activePulsar.originalData.references && (
+                    <div>
+                      <h4 className="text-indigo-300 font-medium mb-1">References</h4>
+                      {renderList(activePulsar.originalData.references)}
+                    </div>
+                  )}
+                  
+                  {/* Add a download button for this specific pulsar's data */}
+                  <div className="mt-6 pt-4 border-t border-slate-700">
+                    <button
+                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md flex items-center justify-center"
+                      onClick={() => {/* Handle download or link to detailed data */}}
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Download {activePulsar.name} Data
+                    </button>
                   </div>
                 </div>
-                
-                {/* Add more sections based on your data structure */}
-                {activePulsar.coordinates && (
-                  <div>
-                    <h4 className="text-indigo-300 font-medium mb-1">Coordinates</h4>
-                    <p className="text-white">
-                      RA: {activePulsar.coordinates.ra}<br />
-                      Dec: {activePulsar.coordinates.dec}
-                    </p>
-                  </div>
-                )}
-                
-                {activePulsar.description && (
-                  <div>
-                    <h4 className="text-indigo-300 font-medium mb-1">Description</h4>
-                    <p className="text-gray-300">{activePulsar.description}</p>
-                  </div>
-                )}
-                
-                {/* Display observation details if available */}
-                {activePulsar.observations && (
-                  <div>
-                    <h4 className="text-indigo-300 font-medium mb-1">Observations</h4>
-                    <div className="bg-slate-800/60 p-3 rounded">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-indigo-200">
-                            <th className="pb-2">Date</th>
-                            <th className="pb-2">Instrument</th>
-                            <th className="pb-2">Duration</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {activePulsar.observations.map((obs, index) => (
-                            <tr key={index} className="border-t border-slate-700">
-                              <td className="py-2">{obs.date}</td>
-                              <td className="py-2">{obs.instrument}</td>
-                              <td className="py-2">{obs.duration}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+              ) : (
+                // Standard format for other data
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="text-indigo-300 font-medium mb-1">Phase</h4>
+                      <p className="text-white">{activePulsar.phase}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-indigo-300 font-medium mb-1">Status</h4>
+                      <p className="text-white">{activePulsar.status}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-indigo-300 font-medium mb-1">Parallax</h4>
+                      <p className="text-white">{activePulsar.parallax} mas</p>
+                    </div>
+                    <div>
+                      <h4 className="text-indigo-300 font-medium mb-1">Proper Motion</h4>
+                      <p className="text-white">
+                        {activePulsar.properMotionRA && `RA: ${activePulsar.properMotionRA} mas/yr`}
+                        {activePulsar.properMotionDec && <><br />Dec: {activePulsar.properMotionDec} mas/yr</>}
+                      </p>
                     </div>
                   </div>
-                )}
-                
-                {/* Add a download button for this specific pulsar's data */}
-                <div className="mt-6 pt-4 border-t border-slate-700">
-                  <button
-                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md flex items-center justify-center"
-                    onClick={() => {/* Handle download or link to detailed data */}}
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Download {activePulsar.name} Data
-                  </button>
+                  
+                  {activePulsar.coordinates && (
+                    <div>
+                      <h4 className="text-indigo-300 font-medium mb-1">Coordinates</h4>
+                      <p className="text-white">
+                        RA: {activePulsar.coordinates.ra}<br />
+                        Dec: {activePulsar.coordinates.dec}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {activePulsar.description && (
+                    <div>
+                      <h4 className="text-indigo-300 font-medium mb-1">Description</h4>
+                      <p className="text-gray-300">{activePulsar.description}</p>
+                    </div>
+                  )}
+                  
+                  {activePulsar.observations && (
+                    <div>
+                      <h4 className="text-indigo-300 font-medium mb-1">Observations</h4>
+                      <div className="bg-slate-800/60 p-3 rounded">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-indigo-200">
+                              <th className="pb-2">Date</th>
+                              <th className="pb-2">Instrument</th>
+                              <th className="pb-2">Duration</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {activePulsar.observations.map((obs, index) => (
+                              <tr key={index} className="border-t border-slate-700">
+                                <td className="py-2">{obs.date}</td>
+                                <td className="py-2">{obs.instrument}</td>
+                                <td className="py-2">{obs.duration}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="mt-6 pt-4 border-t border-slate-700">
+                    <button
+                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md flex items-center justify-center"
+                      onClick={() => {/* Handle download or link to detailed data */}}
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Download {activePulsar.name} Data
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}
-
-        {/* Data Visualization Section */}
-        <div id="visualization" className="pt-6 mb-12">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-white mb-2">Data Visualizations</h2>
-            <p className="text-indigo-300">
-              Interactive visualizations of MSPSRπ parallax and proper motion measurements
-            </p>
-          </div>
-
-          {/* Visualization placeholder - would be replaced with actual interactive components */}
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="bg-slate-900/60 backdrop-blur-sm border border-cyan-500/30 rounded-lg p-4 shadow-lg">
-              <h3 className="text-lg font-semibold text-cyan-300 mb-3">Galactic Distribution</h3>
-              <div className="h-80 bg-slate-800/50 rounded-md flex items-center justify-center">
-                {/* Placeholder for Galactic distribution visualization */}
-                <div className="text-center">
-                  <svg className="mx-auto h-48 w-48 text-cyan-300" viewBox="0 0 400 400">
-                    {/* Simple Galactic plane representation */}
-                    <ellipse cx="200" cy="200" rx="150" ry="30" stroke="#0e7490" strokeWidth="1" fill="none" />
-                    
-                    {/* Stylized spiral arms */}
-                    <path d="M200,200 C240,180 270,140 290,90" stroke="#0e7490" strokeWidth="1" fill="none" />
-                    <path d="M200,200 C160,180 130,140 110,90" stroke="#0e7490" strokeWidth="1" fill="none" />
-                    <path d="M200,200 C240,220 270,260 290,310" stroke="#0e7490" strokeWidth="1" fill="none" />
-                    <path d="M200,200 C160,220 130,260 110,310" stroke="#0e7490" strokeWidth="1" fill="none" />
-                    
-                    {/* Galactic center */}
-                    <circle cx="200" cy="200" r="8" fill="#0e7490" />
-                    
-                    {/* Sample pulsars */}
-                    <circle cx="180" cy="170" r="3" fill="#0ea5e9" />
-                    <circle cx="220" cy="190" r="3" fill="#0ea5e9" />
-                    <circle cx="170" cy="220" r="3" fill="#0ea5e9" />
-                    <circle cx="240" cy="160" r="3" fill="#0ea5e9" />
-                    <circle cx="160" cy="230" r="3" fill="#0ea5e9" />
-                    <circle cx="210" cy="240" r="3" fill="#0ea5e9" />
-                    <circle cx="250" cy="210" r="3" fill="#0ea5e9" />
-                    <circle cx="150" cy="190" r="3" fill="#0ea5e9" />
-                    <circle cx="230" cy="140" r="3" fill="#0ea5e9" />
-                    <circle cx="170" cy="250" r="3" fill="#0ea5e9" />
-                  </svg>
-                  <p className="text-gray-400 text-sm mt-2">Galactic distribution of observed pulsars</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-slate-900/60 backdrop-blur-sm border border-indigo-500/30 rounded-lg p-4 shadow-lg">
-              <h3 className="text-lg font-semibold text-indigo-300 mb-3">Parallax vs. Proper Motion</h3>
-              <div className="h-80 bg-slate-800/50 rounded-md flex items-center justify-center">
-                {/* Placeholder for scatter plot */}
-                <div className="text-center">
-                  <svg className="mx-auto h-48 w-48 text-indigo-300" viewBox="0 0 400 400">
-                    {/* Axes */}
-                    <line x1="50" y1="350" x2="350" y2="350" stroke="#6366f1" strokeWidth="2" />
-                    <line x1="50" y1="350" x2="50" y2="50" stroke="#6366f1" strokeWidth="2" />
-                    
-                    {/* Axis labels */}
-                    <text x="200" y="380" textAnchor="middle" fill="#6366f1" fontSize="12">Parallax (mas)</text>
-                    <text x="30" y="200" textAnchor="middle" fill="#6366f1" fontSize="12" transform="rotate(-90, 20, 200)">Proper Motion (mas/yr)</text>
-                    
-                    {/* Data points */}
-                    <circle cx="100" cy="300" r="4" fill="#818cf8" />
-                    <circle cx="150" cy="250" r="4" fill="#818cf8" />
-                    <circle cx="120" cy="280" r="4" fill="#818cf8" />
-                    <circle cx="200" cy="200" r="4" fill="#818cf8" />
-                    <circle cx="250" cy="150" r="4" fill="#818cf8" />
-                    <circle cx="180" cy="220" r="4" fill="#818cf8" />
-                    <circle cx="220" cy="180" r="4" fill="#818cf8" />
-                    <circle cx="140" cy="260" r="4" fill="#818cf8" />
-                    <circle cx="280" cy="120" r="4" fill="#818cf8" />
-                    <circle cx="300" cy="100" r="4" fill="#818cf8" />
-                  </svg>
-                  <p className="text-gray-400 text-sm mt-2">Correlation between parallax and proper motion</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-center mt-8">
-            <a href="/visualizations" className="inline-flex items-center px-5 py-3 border border-cyan-500/40 rounded-md text-cyan-300 bg-slate-900/60 hover:bg-slate-800/80 transition duration-300">
-              View Full Interactive Visualizations <ChevronRight className="ml-2 h-5 w-5" />
-            </a>
-          </div>
-        </div>
-
         {/* Data Releases Section */}
         <div className="mb-12">
           <div className="mb-6">
@@ -351,7 +425,6 @@ const DataReleasePage = () => {
                 </a>
               </div>
             </div>
-            
             <div className="bg-slate-900/60 backdrop-blur-sm border border-blue-500/30 rounded-lg p-5 shadow-lg">
               <h3 className="text-lg font-semibold text-blue-300 mb-2">MSPSRPI2 Initial Data</h3>
               <p className="text-gray-300 mb-4">
